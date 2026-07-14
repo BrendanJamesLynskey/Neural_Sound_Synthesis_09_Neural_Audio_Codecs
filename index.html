@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neural Sound Synthesis · Part 9 — Neural Audio Codecs</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});"></script>
+<style>
+:root {
+  --bg: #0a0b0f;
+  --bg2: #12141c;
+  --bg3: #1a1d2a;
+  --fg: #d4d6e0;
+  --fg-dim: #8a8d9a;
+  --accent: #e8a44a;
+  --accent2: #8b7bf0;
+  --accent3: #5ce89a;
+  --accent4: #e85a7a;
+  --accent5: #e8a44a;
+  --border: #2a2d3a;
+  --glow: rgba(74,199,232,0.15);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;font-size:16px}
+body{background:var(--bg);color:var(--fg);font-family:'Palatino Linotype','Book Antiqua',Palatino,'Georgia',serif;line-height:1.75;overflow-x:hidden}
+::selection{background:var(--accent);color:var(--bg)}
+a{color:var(--accent);text-decoration:none;border-bottom:1px solid transparent;transition:border-color .2s}
+a:hover{border-bottom-color:var(--accent)}
+
+header{min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:2rem;position:relative;overflow:hidden}
+header canvas{position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;opacity:.5}
+header .content{position:relative;z-index:1;max-width:880px}
+header .eyebrow{font-family:'Lucida Console',Monaco,monospace;font-size:.8rem;letter-spacing:.3em;text-transform:uppercase;color:var(--accent2);margin-bottom:1.4em}
+header h1{font-size:clamp(2rem,5vw,3.4rem);font-weight:300;letter-spacing:.04em;color:var(--accent);text-shadow:0 0 60px rgba(74,199,232,.3);margin-bottom:.3em}
+header h1 em{font-style:italic;color:var(--fg);font-weight:400}
+header .subtitle{font-size:1.12rem;color:var(--fg-dim);max-width:680px;margin:0 auto 2em}
+header .people{display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap;margin-bottom:2em}
+header .people span{font-size:.85rem;color:var(--fg);padding:.35em .9em;border:1px solid var(--border);border-radius:2px;background:rgba(26,29,42,.7)}
+header .cta{display:flex;gap:.8rem;justify-content:center;flex-wrap:wrap}
+
+nav#toc{position:sticky;top:0;z-index:100;background:rgba(10,11,15,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:.6rem 1rem;overflow-x:auto;white-space:nowrap;text-align:center}
+nav#toc a{display:inline-block;font-size:.78rem;color:var(--fg-dim);padding:.3em .7em;margin:0 .1em;letter-spacing:.04em;text-transform:uppercase;font-family:'Lucida Console',Monaco,monospace;transition:color .2s;border-bottom:none}
+nav#toc a:hover,nav#toc a.active{color:var(--accent)}
+
+section{max-width:920px;margin:0 auto;padding:4rem 1.5rem;border-bottom:1px solid var(--border)}
+section:last-of-type{border-bottom:none}
+h2{font-size:clamp(1.5rem,3vw,2.2rem);font-weight:300;color:var(--accent);margin-bottom:.3em;letter-spacing:.03em}
+h2 .num{font-family:'Lucida Console',Monaco,monospace;font-size:.7em;color:var(--fg-dim);margin-right:.5em}
+h3{font-size:1.2rem;color:var(--accent2);margin:2em 0 .5em;font-weight:400}
+h4{font-size:1rem;color:var(--accent3);margin:1.5em 0 .3em;font-weight:400}
+p{margin-bottom:1.2em}
+ul,ol{padding-left:1.4em;margin-bottom:1.2em}
+li{margin-bottom:.5em}
+.lead{font-size:1.08rem;color:var(--fg);margin-bottom:1.5em}
+
+.viz{margin:2em 0;background:var(--bg2);border:1px solid var(--border);border-radius:4px;overflow:hidden}
+.viz canvas{display:block;width:100%;cursor:crosshair}
+.viz-caption{font-size:.8rem;color:var(--fg-dim);padding:.6em 1em;border-top:1px solid var(--border);font-family:'Lucida Console',Monaco,monospace}
+
+.controls{display:flex;flex-wrap:wrap;gap:.8rem;padding:.8em 1em;background:var(--bg3);border-top:1px solid var(--border);align-items:center}
+.controls label{font-size:.78rem;color:var(--fg-dim);font-family:'Lucida Console',Monaco,monospace;display:flex;align-items:center;gap:.4em}
+.controls input[type="range"]{width:120px;accent-color:var(--accent)}
+.controls select{background:var(--bg);color:var(--fg);border:1px solid var(--border);padding:.3em .5em;font-size:.78rem;border-radius:2px;font-family:inherit}
+.controls button,.btn{background:var(--accent);color:var(--bg);border:none;padding:.45em 1em;font-size:.78rem;font-family:'Lucida Console',Monaco,monospace;cursor:pointer;border-radius:2px;letter-spacing:.03em;transition:background .2s}
+.controls button:hover,.btn:hover{background:#6fd4ef}
+.btn-outline{background:transparent;border:1px solid var(--accent);color:var(--accent)}
+.btn-outline:hover{background:var(--accent);color:var(--bg)}
+.controls .val{color:var(--accent);font-family:'Lucida Console',monospace;font-size:.78rem;min-width:2.5em;display:inline-block}
+.tabrow{display:flex;gap:.3em;flex-wrap:wrap}
+.tabrow button{background:var(--bg);border:1px solid var(--border);color:var(--fg-dim)}
+.tabrow button.on{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+
+.math{display:block;text-align:center;padding:1.4em 1.2em;margin:1.5em 0;background:var(--bg2);border-left:3px solid var(--accent);font-size:1.1rem;color:var(--fg);overflow-x:auto;border-radius:0 4px 4px 0}
+.math .katex{font-size:1.2em}
+.math-inline .katex{font-size:1.0em}
+
+.timeline{position:relative;padding:1em 0 1em 2em;margin:2em 0}
+.timeline::before{content:'';position:absolute;left:.6em;top:0;bottom:0;width:2px;background:var(--border)}
+.timeline-item{position:relative;margin-bottom:1.8em;padding-left:1.5em}
+.timeline-item::before{content:'';position:absolute;left:-1.95em;top:.4em;width:10px;height:10px;border-radius:50%;background:var(--accent);border:2px solid var(--bg)}
+.timeline-year{font-family:'Lucida Console',Monaco,monospace;color:var(--accent);font-size:.85rem;margin-bottom:.2em}
+.timeline-text{font-size:.95rem;color:var(--fg-dim)}
+.timeline-text strong{color:var(--fg)}
+
+blockquote{border-left:3px solid var(--accent5);padding:.8em 1.2em;margin:1.5em 0;color:var(--fg-dim);font-style:italic;background:rgba(232,164,74,.05)}
+blockquote cite{display:block;font-size:.85rem;color:var(--accent5);margin-top:.5em;font-style:normal}
+
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1.5em;margin:1.5em 0}
+@media(max-width:700px){.grid-2{grid-template-columns:1fr}}
+
+.references{margin-top:2em;padding:1.5em;background:var(--bg2);border:1px solid var(--border);border-radius:4px}
+.references h3{margin-top:0}
+.references ol{padding-left:1.5em}
+.references li{font-size:.85rem;color:var(--fg-dim);margin-bottom:.5em;line-height:1.5}
+.references li em{color:var(--fg)}
+
+footer{text-align:center;padding:3em 1.5em;color:var(--fg-dim);font-size:.85rem;border-top:1px solid var(--border)}
+footer a{color:var(--accent2)}
+
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--fg-dim)}
+
+.expandable{margin:1.5em 0;border:1px solid var(--border);border-radius:4px;overflow:hidden}
+.expandable summary{padding:.8em 1.2em;background:var(--bg3);cursor:pointer;font-size:.9rem;color:var(--accent2);font-family:'Lucida Console',Monaco,monospace;letter-spacing:.03em;list-style:none;display:flex;align-items:center;gap:.5em}
+.expandable summary::before{content:'>';font-size:.7em;transition:transform .2s}
+details[open] summary::before{transform:rotate(90deg)}
+.expandable summary:hover{color:var(--fg)}
+.expandable .inner{padding:1.2em 1.4em;background:rgba(139,123,240,.04)}
+.expandable .inner p:last-child{margin-bottom:0}
+
+.note{font-size:.9rem;color:var(--fg-dim);margin:1em 0;padding:.6em 1em;border-left:2px solid var(--accent3);background:rgba(92,232,154,.05)}
+.warn{font-size:.9rem;color:var(--fg-dim);margin:1em 0;padding:.6em 1em;border-left:2px solid var(--accent4);background:rgba(232,90,122,.05)}
+.note strong,.warn strong{color:var(--fg)}
+
+table{width:100%;border-collapse:collapse;margin:1.5em 0;font-size:.9rem}
+th,td{padding:.5em .8em;border:1px solid var(--border);text-align:left;vertical-align:top}
+th{background:var(--bg3);color:var(--accent2);font-weight:400;font-family:'Lucida Console',Monaco,monospace;font-size:.76rem;letter-spacing:.03em}
+td{color:var(--fg-dim)}
+td code,p code,li code{font-family:'Lucida Console',Monaco,monospace;font-size:.85em;color:var(--accent3);background:rgba(92,232,154,.07);padding:.05em .3em;border-radius:2px}
+
+.xref{display:flex;flex-wrap:wrap;gap:.6em;margin:1.5em 0}
+.xref a{font-size:.8rem;padding:.5em 1em;border:1px solid var(--border);background:var(--bg3);font-family:'Lucida Console',Monaco,monospace;color:var(--fg-dim);border-bottom:none;border-radius:3px;transition:all .2s}
+.xref a:hover{color:var(--accent);border-color:var(--accent)}
+.xref a .k{display:block;font-size:.62rem;letter-spacing:.12em;color:var(--accent);margin-bottom:.2em}
+
+.pill{display:inline-block;font-family:'Lucida Console',monospace;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;padding:.15em .55em;border-radius:2px;border:1px solid var(--border);color:var(--fg-dim);margin-left:.4em;vertical-align:middle}
+</style>
+</head>
+<body>
+
+<header>
+  <canvas id="heroCanvas"></canvas>
+  <div class="content">
+    <div class="eyebrow">Neural Sound Synthesis &middot; Part 9 of 12</div>
+    <h1>Neural Audio <em>Codecs</em></h1>
+    <p class="subtitle">
+      A neural codec is an autoencoder with a <em>discrete</em> bottleneck. It does two jobs
+      at once: it crushes audio to a handful of kilobits per second with startling fidelity,
+      and it turns a continuous waveform into a short sequence of integers — tokens a
+      language model can read. This is the hinge of the whole series: everything before it
+      is signal, everything after it is <em>text</em>. Three live demos build the machinery
+      from vector quantization up to a full SoundStream / EnCodec pipeline.
+    </p>
+    <div class="people">
+      <span>VQ-VAE &middot; RVQ</span>
+      <span>SoundStream &middot; EnCodec &middot; DAC</span>
+      <span>Straight-through &middot; Commitment loss &middot; EMA</span>
+    </div>
+    <div class="cta">
+      <a href="#bottleneck" class="btn">Begin &#8595;</a>
+      <a href="https://brendanjameslynskey.github.io/Neural_Sound_Synthesis/" class="btn btn-outline" target="_blank" rel="noopener">Series hub</a>
+    </div>
+  </div>
+</header>
+
+<nav id="toc">
+  <a href="#bottleneck">1 &middot; The Bottleneck</a>
+  <a href="#vq">2 &middot; Vector Quantization</a>
+  <a href="#rvq">3 &middot; Residual VQ</a>
+  <a href="#codecs">4 &middot; SoundStream &amp; EnCodec</a>
+  <a href="#bitrate">5 &middot; Bitrate &amp; Quality</a>
+  <a href="#dac">6 &middot; DAC</a>
+  <a href="#tokens">7 &middot; Tokens → Language</a>
+  <a href="#timeline">8 &middot; Timeline</a>
+  <a href="#next">Next</a>
+</nav>
+
+<!-- ============================================================ -->
+<section id="bottleneck">
+  <h2><span class="num">1</span>The discrete bottleneck — one architecture, two payoffs</h2>
+  <p class="lead">
+    Part 8 built the variational autoencoder: an encoder $E$ that maps audio $\mathbf{x}$ to
+    a <em>continuous</em> latent $\mathbf{z}$, and a decoder $G$ that reconstructs it. A
+    <strong>neural audio codec</strong> keeps that skeleton but forces the latent through a
+    <em>discrete</em> gate — every frame is snapped to one of a finite set of learned
+    vectors. That single change buys two things a continuous VAE cannot give you at once.
+  </p>
+  <div class="grid-2">
+    <div class="note"><strong>Compression.</strong> A discrete code is just an integer index.
+      Send indices instead of floats and you get a bitstream — audio at 1.5&ndash;12&nbsp;kbps
+      that still sounds like speech or music, beating hand-built codecs like Opus at the very
+      low end.</div>
+    <div class="warn"><strong>Tokenization.</strong> A finite alphabet of indices <em>is</em>
+      a vocabulary. The waveform becomes a sentence of tokens, and a transformer can model
+      $p(\text{token}_t \mid \text{token}_{<t})$ exactly as it models text. That is what
+      Part&nbsp;10's music and speech language models consume.</div>
+  </div>
+  <p>
+    The pipeline is deliberately asymmetric to the generative model that will sit on top: the
+    codec is trained <em>once</em>, offline, to reconstruct audio as faithfully as possible;
+    the language model is trained <em>separately</em> over the tokens it produces. Get the
+    codec right and the hard problem of Part&nbsp;1 — audio is enormous, every sample
+    entangled — collapses into a sequence-modelling problem no harder than language.
+  </p>
+  <div class="math">
+    $$\mathbf{x} \;\xrightarrow{\;E\;}\; \mathbf{z} \;\xrightarrow{\;Q\;}\; \big[q_1,q_2,\dots,q_{N_q}\big] \;\xrightarrow{\;G\;}\; \hat{\mathbf{x}}, \qquad q_i \in \{1,\dots,K\}$$
+  </div>
+  <p>
+    The middle arrow, quantization $Q$, is the whole story. It is where the fidelity is lost,
+    where the bitrate is set, and where the tokens are born. The rest of this part is an
+    unpacking of that one operator — first for a single codebook (VQ), then for a stack of
+    them (RVQ), then wrapped in the convolutional encoder/decoder and adversarial training
+    that make SoundStream, EnCodec and DAC.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<section id="vq">
+  <h2><span class="num">2</span>Vector quantization — snapping a vector to its nearest word</h2>
+  <p class="lead">
+    The discrete gate is <strong>vector quantization</strong>, introduced to deep learning by
+    the VQ-VAE (van den Oord et&nbsp;al., 2017). Hold a <em>codebook</em> — a learned table of
+    $K$ vectors $\{\mathbf{e}_k\}_{k=1}^{K}$, each the same dimension as the encoder output.
+    To quantize an encoder vector $\mathbf{z}_e$, find the nearest codebook entry and pass its
+    index forward; the decoder reads back that entry $\mathbf{e}_k$.
+  </p>
+  <div class="math">
+    $$k^\star = \arg\min_{k}\;\lVert \mathbf{z}_e - \mathbf{e}_k \rVert_2, \qquad \mathbf{z}_q = \mathbf{e}_{k^\star}$$
+  </div>
+
+  <h3>The problem: you cannot differentiate an $\arg\min$</h3>
+  <p>
+    Nearest-neighbour lookup is a step function — its gradient is zero almost everywhere and
+    undefined at the boundaries. Back-propagation would have no signal to train the encoder.
+    The VQ-VAE's trick is the <strong>straight-through estimator</strong>: on the forward pass
+    use the quantized $\mathbf{z}_q$; on the backward pass simply <em>copy</em> the gradient
+    from $\mathbf{z}_q$ straight onto $\mathbf{z}_e$, as if quantization were the identity.
+  </p>
+  <div class="math">
+    $$\mathbf{z}_q = \mathbf{z}_e + \operatorname{sg}\!\big[\mathbf{e}_{k^\star} - \mathbf{z}_e\big], \qquad \frac{\partial \mathbf{z}_q}{\partial \mathbf{z}_e} \approx \mathbf{I}$$
+  </div>
+  <p>
+    where $\operatorname{sg}[\cdot]$ is the stop-gradient operator (identity forward, zero
+    derivative backward). The forward value is exactly $\mathbf{e}_{k^\star}$; the backward
+    value pretends the codebook was transparent. It is biased, but it works.
+  </p>
+
+  <h3>The losses that move the codebook</h3>
+  <p>
+    Straight-through trains the encoder and decoder, but the codebook vectors themselves get
+    no gradient from reconstruction. Two extra terms fix that. The <strong>codebook loss</strong>
+    pulls each chosen entry toward the encoder output; the <strong>commitment loss</strong>
+    pushes the encoder output toward its chosen entry so it does not wander between codes.
+  </p>
+  <div class="math">
+    $$\mathcal{L} = \underbrace{\lVert \mathbf{x} - \hat{\mathbf{x}} \rVert^2}_{\text{reconstruction}} \;+\; \underbrace{\big\lVert \operatorname{sg}[\mathbf{z}_e] - \mathbf{e} \big\rVert^2}_{\text{codebook}} \;+\; \beta\,\underbrace{\big\lVert \mathbf{z}_e - \operatorname{sg}[\mathbf{e}] \big\rVert^2}_{\text{commitment}}$$
+  </div>
+  <p>
+    The stop-gradients split the responsibility: the codebook term only moves $\mathbf{e}$,
+    the commitment term only moves $\mathbf{z}_e$, and $\beta\approx0.25$ balances how tightly
+    the encoder is held to the table. In practice the codebook term is usually replaced by an
+    <strong>exponential moving average</strong> (EMA) update — treat each entry as the running
+    mean of the encoder vectors that selected it, which is more stable than an SGD step.
+  </p>
+  <div class="math">
+    $$\mathbf{e}_k \leftarrow \frac{\sum_i \mathbb{1}[k_i=k]\,\mathbf{z}_{e,i}}{\sum_i \mathbb{1}[k_i=k]}\quad\text{(as a decaying EMA over batches)}$$
+  </div>
+
+  <div class="warn">
+    <strong>Codebook collapse.</strong> The pathology that haunts VQ: a few entries win every
+    lookup and the rest are never selected, so most of the vocabulary is dead and the
+    effective bitrate is far below $\log_2 K$. Cures include EMA updates, re-initialising
+    dead codes to busy encoder outputs (<em>random restarts</em>), lower code dimension, and
+    L2-normalising both codes and encoder outputs so the $\arg\min$ becomes a cosine
+    lookup — the DAC recipe in Section&nbsp;6.
+  </p>
+  </div>
+
+  <details class="expandable"><summary>derivation · why the straight-through estimator is the right bias</summary>
+    <div class="inner">
+      <p>Write the encoder as $\mathbf{z}_e=E_\theta(\mathbf{x})$ and the reconstruction loss
+      as $\ell(\hat{\mathbf{x}})=\ell(G(\mathbf{z}_q))$. The exact gradient
+      $\partial \ell/\partial\theta$ needs $\partial\mathbf{z}_q/\partial\mathbf{z}_e$, which
+      is zero: perturbing $\mathbf{z}_e$ within a Voronoi cell leaves $k^\star$, hence
+      $\mathbf{z}_q$, unchanged. The straight-through estimator replaces that Jacobian with
+      the identity, giving the surrogate</p>
+      <div class="math">$$\frac{\partial \ell}{\partial \theta} \approx \frac{\partial \ell}{\partial \mathbf{z}_q}\,\frac{\partial \mathbf{z}_e}{\partial \theta}.$$</div>
+      <p>This is exactly correct in the limit of a fine codebook, where
+      $\mathbf{z}_q\to\mathbf{z}_e$ and quantization <em>is</em> nearly the identity. For a
+      coarse codebook it is biased, but the bias points the encoder in a direction that
+      reduces reconstruction error for the code it actually selected — the only thing we can
+      act on. The commitment term then shrinks $\lVert\mathbf{z}_e-\mathbf{e}_{k^\star}\rVert$,
+      making the approximation progressively tighter during training.</p>
+    </div>
+  </details>
+</section>
+
+<!-- ============================================================ -->
+<section id="rvq">
+  <h2><span class="num">3</span>Residual VQ — a stack of codebooks refining the leftover</h2>
+  <p class="lead">
+    A single codebook of $K$ entries carries only $\log_2 K$ bits per frame. To reach the
+    fidelity a codec needs you would want an enormous $K$ — but a million-entry codebook is
+    impossible to train (collapse) and slow to search. <strong>Residual vector quantization</strong>
+    sidesteps this: quantize coarsely with codebook&nbsp;1, take the <em>residual</em> — what
+    the first code missed — and quantize <em>that</em> with codebook&nbsp;2, and so on down a
+    stack of $N_q$ codebooks.
+  </p>
+  <div class="math">
+    $$\mathbf{r}_0 = \mathbf{z}_e,\qquad q_i = \arg\min_{k}\lVert \mathbf{r}_{i-1}-\mathbf{e}^{(i)}_k\rVert,\qquad \mathbf{r}_i = \mathbf{r}_{i-1}-\mathbf{e}^{(i)}_{q_i}, \qquad \hat{\mathbf{z}} = \sum_{i=1}^{N_q}\mathbf{e}^{(i)}_{q_i}$$
+  </div>
+  <p>
+    Each stage chips away at the error the previous stages left behind, so the residual
+    magnitude $\lVert\mathbf{r}_i\rVert$ shrinks geometrically and the reconstruction
+    $\hat{\mathbf{z}}$ marches toward the true encoder vector. With $N_q$ codebooks of $K$
+    entries each, the effective vocabulary is $K^{N_q}$ — the reach of a giant codebook — at
+    the training cost and search cost of $N_q$ small ones.
+  </p>
+
+  <div class="viz">
+    <canvas id="rvqViz" height="360" aria-label="Residual vector quantization staged in a 2-D plane"></canvas>
+    <div class="controls">
+      <label>stages N_q <input type="range" id="rvqNq" min="1" max="6" step="1" value="4"><span class="val" id="rvqNqV">4</span></label>
+      <label>codebook K
+        <select id="rvqK"><option value="4">4</option><option value="8">8</option><option value="16" selected>16</option><option value="32">32</option></select>
+      </label>
+      <button id="rvqNew">↻ New input vector</button>
+    </div>
+    <div class="viz-caption" id="rvqCap">Left: the input (★) reached by a chain of chosen codewords, one per stage. Right: the residual magnitude collapsing stage by stage. This is the heart of SoundStream / EnCodec.</div>
+  </div>
+
+  <div class="grid-2">
+    <div class="note"><strong>Fine bitrate control.</strong> Because the codebooks are ordered
+    coarse→fine, you can <em>truncate</em> the stack at decode time: keep the first $n\le N_q$
+    codes and you have a valid, lower-bitrate reconstruction. One trained codec serves a whole
+    ladder of bitrates.</div>
+    <div class="warn"><strong>Quantizer dropout.</strong> To make that truncation actually
+    <em>work</em>, SoundStream trains with a random number of active stages per step — so every
+    prefix of the stack is optimised to reconstruct on its own, not just the full depth.</div>
+  </div>
+
+  <details class="expandable"><summary>derivation · why residual magnitude decays geometrically</summary>
+    <div class="inner">
+      <p>Suppose each codebook's entries are spaced so that the nearest one lands within a ball
+      of radius proportional to the current residual's scale — i.e. stage $i$ reduces the
+      residual norm by a roughly constant factor $\rho<1$:</p>
+      <div class="math">$$\lVert\mathbf{r}_i\rVert \le \rho\,\lVert\mathbf{r}_{i-1}\rVert \;\Rightarrow\; \lVert\mathbf{r}_{N_q}\rVert \le \rho^{\,N_q}\,\lVert\mathbf{z}_e\rVert.$$</div>
+      <p>The error falls exponentially in the number of stages, so distortion in dB is
+      <em>linear</em> in $N_q$: every added codebook buys a roughly constant SNR increment,
+      exactly the behaviour Demo&nbsp;5 plots for real audio. The factor $\rho$ improves as
+      each codebook is trained to tile its own residual distribution — which is why the
+      per-stage codebooks are learned jointly with the encoder, not fixed.</p>
+    </div>
+  </details>
+</section>
+
+<!-- ============================================================ -->
+<section id="codecs">
+  <h2><span class="num">4</span>SoundStream &amp; EnCodec — the full pipeline</h2>
+  <p class="lead">
+    SoundStream (Zeghidour et&nbsp;al., 2021) and EnCodec (Défossez et&nbsp;al., 2022) wrap RVQ
+    in a fully convolutional, <em>streaming</em> encoder/decoder and train the whole thing
+    end-to-end with a mixture of reconstruction and adversarial objectives. The result is a
+    real-time neural codec that runs on a laptop CPU. Hover the blocks below to walk the signal
+    from waveform to tokens and back.
+  </p>
+
+  <div class="viz">
+    <canvas id="archViz" height="330" aria-label="Neural audio codec architecture: encoder, RVQ bottleneck, decoder"></canvas>
+    <div class="controls">
+      <button id="archTokens">Highlight the tokens</button>
+      <button id="archReset" class="btn-outline">Reset view</button>
+    </div>
+    <div class="viz-caption" id="archCap">Hover a block to inspect it. Raw audio → convolutional encoder (downsampling) → RVQ bottleneck (the discrete tokens) → convolutional decoder (upsampling) → audio.</div>
+  </div>
+
+  <h3>The four pieces</h3>
+  <ul>
+    <li><strong>Convolutional encoder.</strong> A cascade of strided 1-D convolutions with
+      residual blocks. Each strided layer <em>downsamples</em> in time (strides like
+      $2,4,5,8$), so ~$24\,000$ samples per second collapse to ~$75$ latent frames per
+      second — the total stride is the product, e.g. $320\times$.</li>
+    <li><strong>RVQ bottleneck.</strong> Each latent frame is quantized by the stack of
+      Section&nbsp;3 into $N_q$ integer codes. These codes <em>are</em> the transmitted
+      bitstream and the tokens Part&nbsp;10 models.</li>
+    <li><strong>Convolutional decoder.</strong> A mirror of the encoder using transposed
+      convolutions that <em>upsample</em> back to the waveform rate.</li>
+    <li><strong>Streaming.</strong> All convolutions are <em>causal</em> and padding is cached,
+      so the codec runs frame-by-frame with a fixed, small latency — essential for live calls.</li>
+  </ul>
+
+  <h3>The training objective — reconstruct, and fool a critic</h3>
+  <p>
+    An $\ell_2$ waveform loss alone gives muffled audio (it averages away phase detail, exactly
+    the Part&nbsp;1 lesson). Neural codecs instead combine three ingredients, and it is the
+    <em>combination</em> that yields fidelity.
+  </p>
+  <table>
+    <thead><tr><th>Term</th><th>What it does</th><th>Form</th></tr></thead>
+    <tbody>
+      <tr><td><strong style="color:var(--accent)">Multi-scale STFT</strong></td>
+        <td>Match magnitude spectrograms at several window sizes — captures both fine pitch and broad spectral shape.</td>
+        <td>$\sum_s \lVert |\text{STFT}_s(\mathbf{x})| - |\text{STFT}_s(\hat{\mathbf{x}})|\rVert_1$</td></tr>
+      <tr><td><strong style="color:var(--accent4)">Adversarial</strong></td>
+        <td>Multiple discriminators (multi-scale &amp; multi-period, as in HiFi-GAN of Part&nbsp;3) push $\hat{\mathbf{x}}$ onto the manifold of real audio, restoring crispness a regression loss blurs.</td>
+        <td>$\min_G\max_D\ \mathbb{E}[\log D(\mathbf{x})] + \mathbb{E}[\log(1-D(\hat{\mathbf{x}}))]$</td></tr>
+      <tr><td><strong style="color:var(--accent3)">VQ commitment</strong></td>
+        <td>The Section&nbsp;2 commitment loss on every RVQ stage, keeping encoder outputs married to their codes.</td>
+        <td>$\sum_i \lVert \mathbf{r}_{i-1} - \operatorname{sg}[\mathbf{e}^{(i)}_{q_i}]\rVert_2^2$</td></tr>
+    </tbody>
+  </table>
+  <p>
+    A feature-matching loss (match the discriminator's internal activations for real vs fake)
+    usually joins them to stabilise the GAN. EnCodec adds a small <strong>entropy-coding</strong>
+    stage — an arithmetic coder over the code indices — that squeezes a further ~25&nbsp;%
+    off the bitrate for free, since the codes are not uniformly used.
+  </p>
+  <div class="note">
+    <strong>Streaming vs quality.</strong> Making the convolutions causal costs a little
+    fidelity (the decoder cannot look ahead) but is what lets EnCodec run in real time inside a
+    video call. A non-causal variant, trained the same way, scores higher when latency does not
+    matter — the classic codec trade-off, now learned rather than hand-tuned.
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="bitrate">
+  <h2><span class="num">5</span>Bitrate &amp; quality — hear the codebooks add up</h2>
+  <p class="lead">
+    The bitrate of an RVQ codec is a single tidy product: the number of frames per second,
+    times the number of codebooks, times the bits per codebook. Nothing else. That is what
+    makes RVQ so controllable — every knob in the formula is an integer you can dial.
+  </p>
+  <div class="math">
+    $$\text{bits/s} \;=\; f_r \times N_q \times \log_2 K$$
+  </div>
+  <p>
+    With EnCodec's $f_r=75$ frames/s, $K=1024$ (10 bits) and $N_q=8$ codebooks you get
+    $75\times8\times10 = 6000$ bits/s $= 6$&nbsp;kbps; drop to $N_q=2$ and you are at
+    $1.5$&nbsp;kbps — near-telephone quality from 1500 bits a second. Because the stack is
+    ordered, changing $N_q$ needs <em>no retraining</em>: you just transmit fewer codes.
+  </p>
+  <p>
+    The demo below runs a residual quantizer over an actual synthesised clip and lets you
+    <em>hear</em> the trade. Add stages and the reconstruction climbs the SNR curve toward the
+    original; strip them away and the quantization error becomes audible hiss and grain. Press
+    <em>original</em> then <em>quantized</em> to A/B them at the current setting.
+  </p>
+
+  <div class="viz">
+    <canvas id="brViz" height="300" aria-label="Bitrate versus quality: SNR climbing as RVQ stages are added"></canvas>
+    <div class="controls">
+      <label>stages N_q <input type="range" id="brNq" min="1" max="8" step="1" value="3"><span class="val" id="brNqV">3</span></label>
+      <label>bits/codebook
+        <select id="brK"><option value="2">1&nbsp;bit (K=2)</option><option value="4" selected>2&nbsp;bit (K=4)</option><option value="8">3&nbsp;bit (K=8)</option></select>
+      </label>
+      <label>signal
+        <select id="brSig"><option value="vowel">sung vowel</option><option value="chord">synth chord</option><option value="pluck">plucked string</option></select>
+      </label>
+      <button id="brQuant">▶ Quantized</button>
+      <button id="brOrig" class="btn-outline">▶ Original</button>
+    </div>
+    <div class="viz-caption" id="brCap">Left: original (faint) vs reconstruction, and the residual error. Right: SNR climbs ~6 dB per stage as bitrate rises. Drag the slider and listen.</div>
+  </div>
+  <div class="grid-2">
+    <div class="note"><strong>~6 dB per stage.</strong> Because each codebook refines the
+    previous residual, distortion falls geometrically and SNR rises almost linearly with
+    $N_q$ — the same "each bit buys ~6&nbsp;dB" rule from Part&nbsp;1's quantization section,
+    now delivered by a stack of learned codebooks instead of raw bit depth.</div>
+    <div class="warn"><strong>This demo uses per-sample scalar RVQ</strong> so it can play in
+    your browser with no trained model. A real codec quantizes 128-dim <em>latent</em> vectors
+    with learned codebooks, which is why it reaches CD-like quality at a thousandth of this
+    demo's nominal bitrate.</div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="dac">
+  <h2><span class="num">6</span>DAC — closing the codebook-usage gap</h2>
+  <p class="lead">
+    The Descript Audio Codec (Kumar et&nbsp;al., 2023) took the SoundStream/EnCodec template
+    and fixed its weakest link: codebook collapse. EnCodec's codebooks were often only
+    partly used, wasting bitrate. DAC's changes push utilisation close to 100&nbsp;% and let a
+    <em>single</em> model compress 44.1&nbsp;kHz audio — speech, music, environmental sound —
+    at ~8&nbsp;kbps with quality that beats EnCodec at 3× the rate.
+  </p>
+  <h3>The three key improvements</h3>
+  <ul>
+    <li><strong>Factorized, L2-normalized codes.</strong> The encoder output is projected to a
+      <em>low</em>-dimensional space (e.g. 8-D) for the lookup, and both the code and the query
+      are L2-normalized so nearest-neighbour becomes a <em>cosine</em> search on a hypersphere.
+      Low dimension + normalization dramatically raises how many codes get used.</li>
+    <li><strong>Snake activation.</strong> Borrowed from BigVGAN, the periodic activation
+      $x + \tfrac{1}{\alpha}\sin^2(\alpha x)$ gives the decoder a built-in inductive bias
+      toward periodic (i.e. pitched, harmonic) signals — a better fit for audio than ReLU.</li>
+    <li><strong>Quantizer dropout, fixed.</strong> DAC noted that naïve quantizer dropout
+      slightly hurts full-bitrate quality and applies it more carefully, keeping the
+      bitrate-scalability benefit without the fidelity tax.</li>
+  </ul>
+  <div class="math">
+    $$\text{snake}(x) = x + \frac{1}{\alpha}\sin^2(\alpha x)$$
+  </div>
+  <p>
+    The lesson is general: the bottleneck was never the RVQ idea but the <em>statistics</em> of
+    the codebook. Force the codes onto a sphere in a low-dimensional space and the $\arg\min$
+    spreads its mass, so the bits you paid for are actually spent. DAC is now the default codec
+    behind many 2024&ndash;25 audio language models.
+  </p>
+  <blockquote>
+    A neural codec is judged by a strange double standard: it must be a great <em>compressor</em>
+    (low bitrate, high fidelity) and a great <em>tokenizer</em> (codes a language model can
+    predict). DAC's high codebook usage helps both — every token carries information, so the
+    downstream transformer never wastes capacity on dead symbols.
+  </blockquote>
+</section>
+
+<!-- ============================================================ -->
+<section id="tokens">
+  <h2><span class="num">7</span>Why discretization unlocks language models</h2>
+  <p class="lead">
+    Everything in this part has been building one object: a sequence of integers that stands in
+    for a waveform. Once audio is a sequence of tokens over a fixed vocabulary, the entire
+    machinery of language modelling applies unchanged — and that is the subject of Part&nbsp;10.
+  </p>
+  <p>
+    A transformer models $p(\text{token}_t \mid \text{token}_{<t})$ with a softmax over the
+    codebook. Continuous latents cannot support this: there is no clean categorical
+    distribution to predict, no cross-entropy to minimise, no temperature to sample with.
+    Discretization is precisely what turns "generate audio" into "predict the next word".
+  </p>
+  <div class="warn">
+    <strong>The RVQ flattening problem.</strong> RVQ gives $N_q$ codes <em>per frame</em>, so
+    the token grid is 2-D (time × codebook), not a 1-D stream. Part&nbsp;10's whole craft is how
+    to serialise it: AudioLM's coarse-to-fine stages, MusicGen's delayed-interleaving pattern,
+    or predicting all $N_q$ codes of a frame in parallel. The codec sets the board; the language
+    model chooses the move order.
+  </div>
+
+  <h3>Contrast with classical codecs</h3>
+  <p>
+    Classical codecs — MP3, AAC, Opus — also compress audio hard, but by <em>hand-designed</em>
+    signal processing: an MDCT into the frequency domain, a psychoacoustic model that discards
+    what the ear cannot hear, then entropy coding. They are superb compressors and terrible
+    tokenizers — their bitstream is a tangle of scale factors and Huffman codes with no
+    learnable, model-friendly structure. See the
+    <a href="https://github.com/BrendanJamesLynskey/DSP_and_Music" target="_blank" rel="noopener">DSP &amp; Music</a>
+    collection's MDCT guide for how the classical side works.
+  </p>
+  <table>
+    <thead><tr><th></th><th>Classical (Opus / MP3)</th><th>Neural (EnCodec / DAC)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Transform</strong></td><td>Fixed MDCT + psychoacoustic mask</td><td>Learned convolutional encoder</td></tr>
+      <tr><td><strong>Quantizer</strong></td><td>Scalar, perceptually weighted</td><td>Residual vector quantization</td></tr>
+      <tr><td><strong>Very-low bitrate</strong></td><td>Artefacts, warble below ~6&nbsp;kbps</td><td>Intelligible speech at 1.5&nbsp;kbps</td></tr>
+      <tr><td><strong>Output</strong></td><td>A bitstream, nothing more</td><td>Tokens a transformer can generate</td></tr>
+    </tbody>
+  </table>
+  <p>
+    Neither replaces the other: Opus still wins on CPU cost and guaranteed low latency for a
+    phone call. But only the neural codec doubles as a <em>generative</em> substrate, and that
+    is why the field adopted it wholesale for synthesis.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<section id="timeline">
+  <h2><span class="num">8</span>From VQ-VAE to DAC in six years</h2>
+  <p>
+    The discrete-bottleneck idea arrived for images and speech, then was engineered into a
+    real-time audio compressor in a remarkably tight arc.
+  </p>
+  <div class="timeline">
+    <div class="timeline-item"><div class="timeline-year">2017</div><div class="timeline-text"><strong>VQ-VAE</strong> (van den Oord et&nbsp;al.) introduces the learned discrete codebook, the straight-through estimator, and the commitment loss — discretization as a differentiable layer. <span class="pill">Part 8 · 9</span></div></div>
+    <div class="timeline-item"><div class="timeline-year">2019</div><div class="timeline-text"><strong>VQ-VAE-2</strong> shows hierarchical codebooks scale to high-resolution images, foreshadowing multi-level audio codes.</div></div>
+    <div class="timeline-item"><div class="timeline-year">2021</div><div class="timeline-text"><strong>SoundStream</strong> (Zeghidour et&nbsp;al.) fuses a streaming conv encoder/decoder, <strong>residual VQ</strong>, and adversarial + STFT losses into the first real-time neural audio codec, with quantizer dropout for bitrate scalability. <span class="pill">Part 9</span></div></div>
+    <div class="timeline-item"><div class="timeline-year">2022</div><div class="timeline-text"><strong>EnCodec</strong> (Défossez et&nbsp;al.) refines the recipe — multi-scale discriminators, a balancer for the loss mixture, and entropy coding — and ships as an open, high-quality 24/48&nbsp;kHz codec. <strong>AudioLM</strong> starts modelling its tokens as a language. <span class="pill">Part 9 · 10</span></div></div>
+    <div class="timeline-item"><div class="timeline-year">2023</div><div class="timeline-text"><strong>DAC</strong> (Descript) closes the codebook-usage gap with factorized L2-normalized codes and snake activations; <strong>MusicGen</strong> generates music directly over EnCodec tokens. <span class="pill">Part 9 · 10</span></div></div>
+    <div class="timeline-item"><div class="timeline-year">2024&ndash;25</div><div class="timeline-text"><strong>Single-codebook and semantic codecs</strong> (Mimi, WavTokenizer, SpeechTokenizer) trade a little fidelity for far shorter, more predictable token streams — tuned for the language models that consume them. <span class="pill">Part 10</span></div></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="next">
+  <h2><span class="num">→</span>Where to go next</h2>
+  <p>
+    You now have the tokenizer of the neural-audio era: an autoencoder whose discrete
+    bottleneck compresses sound to kilobits and, in the same breath, emits a sequence of
+    integers. The obvious next question is what to <em>do</em> with that sequence — and the
+    answer is to model it exactly as a language.
+  </p>
+  <div class="xref">
+    <a href="https://brendanjameslynskey.github.io/Neural_Sound_Synthesis/"><span class="k">Series hub</span>All twelve parts &middot; the interactive map</a>
+    <a href="https://brendanjameslynskey.github.io/Neural_Sound_Synthesis_08_Diffusion_and_Flow/"><span class="k">Part 8 ←</span>Diffusion &amp; Flow (VAEs, latents)</a>
+    <a href="https://brendanjameslynskey.github.io/Neural_Sound_Synthesis_10_LM_Music_Generation/"><span class="k">Part 10 →</span>Language Models over Tokens</a>
+    <a href="https://github.com/BrendanJamesLynskey/DSP_and_Music"><span class="k">Collection</span>DSP &amp; Music</a>
+  </div>
+  <div class="references">
+    <h3>References</h3>
+    <ol>
+      <li>van den Oord, A., Vinyals, O., Kavukcuoglu, K. (2017). <em>Neural Discrete Representation Learning (VQ-VAE).</em> NeurIPS. arXiv:1711.00937.</li>
+      <li>Razavi, A., van den Oord, A., Vinyals, O. (2019). <em>Generating Diverse High-Fidelity Images with VQ-VAE-2.</em> NeurIPS.</li>
+      <li>Zeghidour, N., Luebs, A., Omran, A., Skoglund, J., Tagliasacchi, M. (2021). <em>SoundStream: An End-to-End Neural Audio Codec.</em> IEEE/ACM TASLP. arXiv:2107.03312.</li>
+      <li>Défossez, A., Copet, J., Synnaeve, G., Adi, Y. (2022). <em>High Fidelity Neural Audio Compression (EnCodec).</em> arXiv:2210.13438.</li>
+      <li>Kumar, R., Seetharaman, P., Luebs, A., Kumar, I., Kumar, K. (2023). <em>High-Fidelity Audio Compression with Improved RVQGAN (DAC).</em> NeurIPS. arXiv:2306.06546.</li>
+      <li>Kong, J., Kim, J., Bae, J. (2020). <em>HiFi-GAN: Generative Adversarial Networks for Efficient and High Fidelity Speech Synthesis.</em> NeurIPS.</li>
+      <li>Borsos, Z. et&nbsp;al. (2022). <em>AudioLM: A Language Modeling Approach to Audio Generation.</em> arXiv:2209.03143.</li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+  <p>
+    Neural Sound Synthesis &middot; Part 9 — Neural Audio Codecs<br>
+    Part of the <a href="https://github.com/BrendanJamesLynskey/DSP_and_Music" target="_blank" rel="noopener">DSP &amp; Music</a> collection &middot;
+    single-file HTML/CSS/JS &middot; Web Audio API &middot; KaTeX &middot; no dependencies.
+  </p>
+</footer>
+
+<script>
+(function(){
+"use strict";
+// ── utilities ─────────────────────────────────────────────────
+const DPR=window.devicePixelRatio||1;
+function setupCanvas(c,w,h){ c.width=Math.round(w*DPR); c.height=Math.round(h*DPR); c.style.height=h+'px'; const x=c.getContext('2d'); x.setTransform(DPR,0,0,DPR,0,0); return x; }
+function fitWidth(c){ const r=c.parentElement.getBoundingClientRect(); return Math.max(320,Math.floor(r.width)); }
+let audioCtx=null;
+function actx(){ if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)(); if(audioCtx.state==='suspended') audioCtx.resume(); return audioCtx; }
+function play(samples,sr){ const a=actx(); const b=a.createBuffer(1,samples.length,sr); b.getChannelData(0).set(samples); const s=a.createBufferSource(); s.buffer=b; const g=a.createGain(); g.gain.value=0.9; s.connect(g); g.connect(a.destination); s.start(); return s; }
+function fade(buf,n){ const N=buf.length,k=Math.min(n,N>>1); for(let i=0;i<k;i++){ buf[i]*=i/k; buf[N-1-i]*=i/k; } return buf; }
+
+// ── shared: accent + signal synthesis ─────────────────────────
+const SR=16000;
+const ACC=()=>getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#e8a44a';
+// sunflower/phyllotaxis codebook: K entries evenly tiling a disc of radius R (deterministic)
+function discCodebook(K,R){ const e=[]; const GA=2.399963229728653; for(let k=0;k<K;k++){ const r=R*Math.sqrt((k+0.5)/K); const a=k*GA; e.push([r*Math.cos(a), r*Math.sin(a)]); } return e; }
+function nearest(v,cb){ let bd=Infinity,bi=0; for(let k=0;k<cb.length;k++){ const dx=v[0]-cb[k][0], dy=v[1]-cb[k][1]; const d=dx*dx+dy*dy; if(d<bd){bd=d;bi=k;} } return bi; }
+
+// audio signal generator for the bitrate demo
+function genSig(kind){
+  const n=Math.floor(SR*0.7); const x=new Float32Array(n);
+  for(let i=0;i<n;i++){
+    const t=i/SR; let s=0;
+    if(kind==='vowel'){
+      const f0=165; const formants=[[700,1.0,90],[1220,0.5,100],[2600,0.25,130]];
+      for(let h=1;h<=30;h++){ const f=f0*h; if(f>SR/2) break; let amp=1/h,fw=0; for(const[fc,g,bw] of formants) fw+=g/(1+Math.pow((f-fc)/bw,2)); s+=amp*fw*Math.sin(2*Math.PI*f*t+0.4*Math.sin(2*Math.PI*5.5*t)); }
+      s*=0.4+0.6*Math.min(1,t*4)*Math.exp(-t*0.5);
+    } else if(kind==='chord'){
+      const notes=[261.63,329.63,392.0,523.25];
+      for(const f of notes){ s+=Math.sin(2*Math.PI*f*t)+0.35*Math.sin(2*Math.PI*2*f*t); }
+      s*=0.25*Math.exp(-t*1.2)*(1-Math.exp(-t*40));
+    } else { // pluck (Karplus-Strong)
+      // fall through handled below
+    }
+    x[i]=s;
+  }
+  if(kind==='pluck'){
+    const f=196; const L=Math.round(SR/f); const buf=new Float32Array(L);
+    for(let i=0;i<L;i++) buf[i]=Math.random()*2-1;
+    let idx=0; for(let nn=0;nn<n;nn++){ const cur=buf[idx]; const nx=buf[(idx+1)%L]; const v=0.5*(cur+nx)*0.995; x[nn]=cur; buf[idx]=v; idx=(idx+1)%L; }
+  }
+  let m=0; for(let i=0;i<n;i++) m=Math.max(m,Math.abs(x[i])); if(m>0) for(let i=0;i<n;i++) x[i]=x[i]/m*0.92;
+  return fade(x,240);
+}
+// per-sample scalar residual VQ: stage s has K levels over [-R_s,R_s], R halves each stage
+function scalarRVQ(sig,stages,K){
+  const recon=new Float32Array(sig.length);
+  const res=Float32Array.from(sig);
+  const R0=1.0, rho=0.5;
+  const snr=[];
+  for(let s=0;s<stages;s++){
+    const R=R0*Math.pow(rho,s); const step=(2*R)/(K-1);
+    for(let i=0;i<sig.length;i++){ let q=Math.round((res[i]+R)/step); if(q<0)q=0; else if(q>K-1)q=K-1; const val=-R+q*step; recon[i]+=val; res[i]-=val; }
+    let sp=0,ep=0; for(let i=0;i<sig.length;i++){ sp+=sig[i]*sig[i]; ep+=(sig[i]-recon[i])*(sig[i]-recon[i]); }
+    snr.push(10*Math.log10(sp/(ep+1e-12)));
+  }
+  return {recon,snr};
+}
+
+// ── DEMO 1: Residual VQ visualiser (flagship) ─────────────────
+(function rvqVisualiser(){
+  const c=document.getElementById('rvqViz'); if(!c) return;
+  const cap=document.getElementById('rvqCap'); const H=360;
+  let W=fitWidth(c); let ctx=setupCanvas(c,W,H);
+  const nqEl=document.getElementById('rvqNq'), nqV=document.getElementById('rvqNqV'), kEl=document.getElementById('rvqK');
+  const FR=75; // frame rate (Hz) for bitrate display
+  let input=[0.55,-0.42];
+  let seed=1;
+  function newInput(){ // deterministic-ish spread inside radius 0.9
+    seed=(seed*1103515245+12345)&0x7fffffff; const a=(seed/0x7fffffff)*2*Math.PI;
+    seed=(seed*1103515245+12345)&0x7fffffff; const r=0.35+0.55*(seed/0x7fffffff);
+    input=[r*Math.cos(a), r*Math.sin(a)];
+  }
+  function run(){
+    const Nq=+nqEl.value, K=+kEl.value; nqV.textContent=Nq;
+    // build codebooks: stage i radius shrinks
+    const cbs=[]; let R=1.2; const rho=0.45;
+    for(let i=0;i<Nq;i++){ cbs.push(discCodebook(K,R)); R*=rho; }
+    const chosen=[]; const partials=[[0,0]]; const resMags=[];
+    let res=[input[0],input[1]]; let acc=[0,0];
+    resMags.push(Math.hypot(res[0],res[1]));
+    for(let i=0;i<Nq;i++){
+      const bi=nearest(res,cbs[i]); const e=cbs[i][bi];
+      chosen.push(e); acc=[acc[0]+e[0],acc[1]+e[1]]; partials.push([acc[0],acc[1]]);
+      res=[input[0]-acc[0], input[1]-acc[1]]; resMags.push(Math.hypot(res[0],res[1]));
+    }
+    return {Nq,K,cbs,chosen,partials,resMags};
+  }
+  function draw(){
+    const S=run();
+    ctx.fillStyle='#12141c'; ctx.fillRect(0,0,W,H);
+    const acc=ACC();
+    // layout: left square plane, right residual bars
+    const planeW=Math.min(H-20, W*0.56), padL=14, top=14;
+    const cx=padL+planeW/2, cy=top+planeW/2, sc=(planeW/2)/1.35; // world radius 1.35 -> plane
+    const mx=v=>cx+v[0]*sc, my=v=>cy-v[1]*sc;
+    // plane frame + grid
+    ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.strokeRect(padL,top,planeW,planeW);
+    ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.beginPath(); ctx.moveTo(padL,cy); ctx.lineTo(padL+planeW,cy); ctx.moveTo(cx,top); ctx.lineTo(cx,top+planeW); ctx.stroke();
+    ctx.fillStyle='#8a8d9a'; ctx.font="10px 'Lucida Console',monospace"; ctx.textAlign='left';
+    ctx.fillText('2-D LATENT VECTOR — RVQ IN '+S.Nq+' STAGES', padL, top-2<10?12:top+planeW+14);
+    // faint codebook clouds for each stage (centred on the partial sum before that stage)
+    for(let i=0;i<S.Nq;i++){ const base=S.partials[i]; const col=`hsla(${(i*47+30)%360},70%,60%,`; ctx.fillStyle=col+'0.16)';
+      for(const e of S.cbs[i]){ const p=[base[0]+e[0],base[1]+e[1]]; ctx.beginPath(); ctx.arc(mx(p),my(p),1.4,0,7); ctx.fill(); } }
+    // reconstruction chain: origin -> partials, arrows
+    for(let i=0;i<S.Nq;i++){ const a=S.partials[i], b=S.partials[i+1];
+      const col=`hsl(${(i*47+30)%360},70%,62%)`; ctx.strokeStyle=col; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(mx(a),my(a)); ctx.lineTo(mx(b),my(b)); ctx.stroke();
+      // arrowhead
+      const ang=Math.atan2(my(b)-my(a),mx(b)-mx(a)); const hl=6; ctx.beginPath(); ctx.moveTo(mx(b),my(b)); ctx.lineTo(mx(b)-hl*Math.cos(ang-0.4),my(b)-hl*Math.sin(ang-0.4)); ctx.lineTo(mx(b)-hl*Math.cos(ang+0.4),my(b)-hl*Math.sin(ang+0.4)); ctx.closePath(); ctx.fillStyle=col; ctx.fill();
+      ctx.fillStyle=col; ctx.font="9px 'Lucida Console',monospace"; ctx.fillText('c'+(i+1), (mx(a)+mx(b))/2+4, (my(a)+my(b))/2-3);
+    }
+    // residual (dashed) from last partial to input
+    const last=S.partials[S.Nq];
+    ctx.strokeStyle='rgba(232,90,122,0.8)'; ctx.setLineDash([4,3]); ctx.lineWidth=1.3; ctx.beginPath(); ctx.moveTo(mx(last),my(last)); ctx.lineTo(mx(input),my(input)); ctx.stroke(); ctx.setLineDash([]);
+    // origin dot
+    ctx.fillStyle='#8a8d9a'; ctx.beginPath(); ctx.arc(mx([0,0]),my([0,0]),3,0,7); ctx.fill();
+    // input star
+    ctx.fillStyle=acc; ctx.font="16px sans-serif"; ctx.textAlign='center'; ctx.fillText('★', mx(input), my(input)+5); ctx.textAlign='left';
+    // reconstruction dot
+    ctx.strokeStyle=acc; ctx.lineWidth=1.4; ctx.beginPath(); ctx.arc(mx(last),my(last),4,0,7); ctx.stroke();
+
+    // RIGHT: residual magnitude bars
+    const rx0=padL+planeW+26, rw=W-rx0-16, rtop=24, rh=planeW-70;
+    ctx.fillStyle='#8a8d9a'; ctx.font="10px 'Lucida Console',monospace"; ctx.fillText('RESIDUAL ‖r‖ PER STAGE', rx0, 14);
+    const maxM=Math.max(1e-6,S.resMags[0]); const bw=rw/(S.resMags.length);
+    for(let i=0;i<S.resMags.length;i++){ const hh=(S.resMags[i]/maxM)*rh; const bx=rx0+i*bw;
+      ctx.fillStyle= i===0? 'rgba(232,90,122,0.8)' : `hsl(${((i-1)*47+30)%360},70%,58%)`;
+      ctx.fillRect(bx+2, rtop+rh-hh, bw-5, hh);
+      ctx.fillStyle='#8a8d9a'; ctx.font="9px 'Lucida Console',monospace"; ctx.textAlign='center';
+      ctx.fillText(i===0?'in':(''+i), bx+bw/2, rtop+rh+12); ctx.textAlign='left';
+    }
+    ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.beginPath(); ctx.moveTo(rx0,rtop+rh); ctx.lineTo(rx0+rw,rtop+rh); ctx.stroke();
+    // readouts
+    const bits=S.Nq*Math.log2(S.K); const kbps=(FR*bits)/1000;
+    ctx.fillStyle=acc; ctx.font="11px 'Lucida Console',monospace";
+    ctx.fillText('bitrate = '+FR+' × '+S.Nq+' × log₂'+S.K, rx0, rtop+rh+34);
+    ctx.fillText('        = '+kbps.toFixed(2)+' kb/s  ('+bits+' bits/frame)', rx0, rtop+rh+50);
+    ctx.fillStyle='#5ce89a'; ctx.fillText('final ‖r‖ = '+S.resMags[S.Nq].toFixed(3), rx0, rtop+rh+66);
+    cap.textContent='N_q='+S.Nq+', K='+S.K+' → '+kbps.toFixed(2)+' kb/s at '+FR+' Hz. Residual falls from '+S.resMags[0].toFixed(2)+' to '+S.resMags[S.Nq].toFixed(3)+' across the stack.';
+  }
+  nqEl.addEventListener('input',draw);
+  kEl.addEventListener('change',draw);
+  document.getElementById('rvqNew').addEventListener('click',()=>{ newInput(); draw(); });
+  window.addEventListener('resize',()=>{ W=fitWidth(c); ctx=setupCanvas(c,W,H); draw(); });
+  draw();
+})();
+
+// ── DEMO 2: Bitrate vs quality (scalar RVQ over real audio) ───
+(function bitrateQuality(){
+  const c=document.getElementById('brViz'); if(!c) return;
+  const cap=document.getElementById('brCap'); const H=300;
+  let W=fitWidth(c); let ctx=setupCanvas(c,W,H);
+  const nqEl=document.getElementById('brNq'), nqV=document.getElementById('brNqV'), kEl=document.getElementById('brK'), sigEl=document.getElementById('brSig');
+  const MAXST=8;
+  let sig=genSig('vowel');
+  function rebuild(){ sig=genSig(sigEl.value); }
+  function draw(){
+    const Nq=+nqEl.value, K=+kEl.value; nqV.textContent=Nq;
+    const full=scalarRVQ(sig,MAXST,K); // snr curve up to MAXST
+    const cur=scalarRVQ(sig,Nq,K);
+    ctx.fillStyle='#12141c'; ctx.fillRect(0,0,W,H);
+    const acc=ACC();
+    const midX=W*0.52, padT=22, plotH=H-46;
+    // LEFT: waveform orig vs recon + error
+    ctx.fillStyle='#8a8d9a'; ctx.font="10px 'Lucida Console',monospace"; ctx.textAlign='left';
+    ctx.fillText('WAVEFORM — original vs reconstruction', 12, 14);
+    const lw=midX-24, ly=padT+plotH*0.32;
+    ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.beginPath(); ctx.moveTo(12,ly); ctx.lineTo(12+lw,ly); ctx.stroke();
+    const step=Math.max(1,Math.floor(sig.length/lw));
+    ctx.strokeStyle='rgba(212,214,224,0.22)'; ctx.lineWidth=1; ctx.beginPath();
+    for(let px=0;px<lw;px++){ const v=sig[px*step]||0; const y=ly-v*plotH*0.28; if(px===0)ctx.moveTo(12+px,y);else ctx.lineTo(12+px,y);} ctx.stroke();
+    ctx.strokeStyle=acc; ctx.lineWidth=1.2; ctx.beginPath();
+    for(let px=0;px<lw;px++){ const v=cur.recon[px*step]||0; const y=ly-v*plotH*0.28; if(px===0)ctx.moveTo(12+px,y);else ctx.lineTo(12+px,y);} ctx.stroke();
+    // error trace
+    const ey=padT+plotH*0.78;
+    ctx.fillStyle='#8a8d9a'; ctx.fillText('quantization error (×3)', 12, ey-plotH*0.20);
+    ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.beginPath(); ctx.moveTo(12,ey); ctx.lineTo(12+lw,ey); ctx.stroke();
+    ctx.strokeStyle='#e85a7a'; ctx.lineWidth=1; ctx.beginPath();
+    for(let px=0;px<lw;px++){ const i=px*step; const e=(sig[i]||0)-(cur.recon[i]||0); const y=ey-e*plotH*0.28*3; if(px===0)ctx.moveTo(12+px,y);else ctx.lineTo(12+px,y);} ctx.stroke();
+
+    // RIGHT: SNR vs bitrate curve
+    const rx0=midX+18, rw=W-rx0-14, rtop=padT, rh=plotH-16;
+    ctx.fillStyle='#8a8d9a'; ctx.fillText('SNR vs BITRATE', rx0, 14);
+    const bitsPer=Math.log2(K);
+    const maxKbps=(SR*MAXST*bitsPer)/1000;
+    const maxSNR=Math.max(6,Math.ceil(full.snr[MAXST-1]/6)*6);
+    const bx=s=> rx0 + ( (s+1)*bitsPer / (MAXST*bitsPer) )*rw;
+    const by=v=> rtop + rh - (Math.max(0,v)/maxSNR)*rh;
+    // axes
+    ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.beginPath(); ctx.moveTo(rx0,rtop); ctx.lineTo(rx0,rtop+rh); ctx.lineTo(rx0+rw,rtop+rh); ctx.stroke();
+    // gridlines every 6 dB
+    ctx.fillStyle='#8a8d9a'; ctx.font="9px 'Lucida Console',monospace";
+    for(let d=0;d<=maxSNR;d+=6){ const y=by(d); ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.beginPath(); ctx.moveTo(rx0,y); ctx.lineTo(rx0+rw,y); ctx.stroke(); ctx.fillStyle='#8a8d9a'; ctx.fillText(d+'dB', rx0+rw-30, y-2); }
+    // curve
+    ctx.strokeStyle=acc; ctx.lineWidth=1.8; ctx.beginPath();
+    for(let s=0;s<MAXST;s++){ const x=bx(s), y=by(full.snr[s]); if(s===0)ctx.moveTo(x,y);else ctx.lineTo(x,y); } ctx.stroke();
+    for(let s=0;s<MAXST;s++){ const x=bx(s), y=by(full.snr[s]); ctx.fillStyle= s<Nq? acc:'rgba(160,164,180,0.5)'; ctx.beginPath(); ctx.arc(x,y,s===Nq-1?4.5:2.6,0,7); ctx.fill(); }
+    // current point marker
+    const cxp=bx(Nq-1), cyp=by(full.snr[Nq-1]);
+    ctx.strokeStyle='#5ce89a'; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(cxp,rtop+rh); ctx.lineTo(cxp,cyp); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#8a8d9a'; ctx.fillText('bitrate →', rx0+rw-52, rtop+rh+13);
+    // readouts
+    const kbps=(SR*Nq*bitsPer)/1000;
+    ctx.fillStyle=acc; ctx.font="11px 'Lucida Console',monospace";
+    ctx.fillText('N_q='+Nq+' · '+kbps.toFixed(1)+' kb/s · SNR '+full.snr[Nq-1].toFixed(1)+' dB', rx0, rtop+rh+30);
+    cap.textContent='N_q='+Nq+' stage(s) × '+bitsPer+' bit → '+kbps.toFixed(1)+' kb/s, SNR '+full.snr[Nq-1].toFixed(1)+' dB. Add stages and press ▶ Quantized to hear the error shrink.';
+  }
+  document.getElementById('brQuant').addEventListener('click',()=>{ const Nq=+nqEl.value,K=+kEl.value; const out=scalarRVQ(sig,Nq,K).recon; play(fade(Float32Array.from(out),200),SR); });
+  document.getElementById('brOrig').addEventListener('click',()=>{ play(fade(Float32Array.from(sig),200),SR); });
+  nqEl.addEventListener('input',draw);
+  kEl.addEventListener('change',draw);
+  sigEl.addEventListener('change',()=>{ rebuild(); draw(); });
+  window.addEventListener('resize',()=>{ W=fitWidth(c); ctx=setupCanvas(c,W,H); draw(); });
+  draw();
+})();
+
+// ── DEMO 3: Codec architecture diagram ────────────────────────
+(function architecture(){
+  const c=document.getElementById('archViz'); if(!c) return;
+  const cap=document.getElementById('archCap'); const H=330;
+  let W=fitWidth(c); let ctx=setupCanvas(c,W,H);
+  let hover=-1, pin=-1;
+  const DEFAULT='Hover a block to inspect it. Raw audio → convolutional encoder (downsampling) → RVQ bottleneck (the discrete tokens) → convolutional decoder (upsampling) → audio.';
+  // block model (relative x fractions)
+  const blocks=[
+    {id:'in',  label:'raw audio',   sub:'24 kHz waveform', col:'#5ce89a',
+      desc:'Raw audio — the input waveform at ~24 kHz. Thousands of entangled samples per second (Part 1). The codec must reduce this to a few tokens per frame and back.'},
+    {id:'enc', label:'conv encoder',sub:'↓ downsample ×320', col:'#8b7bf0',
+      desc:'Convolutional encoder — strided 1-D convolutions with residual blocks. Each strided layer halves/quarters the time axis; the total stride (~320×) turns 24 000 samples/s into ~75 latent frames/s. Causal + cached padding = streaming.'},
+    {id:'rvq', label:'RVQ tokens',  sub:'N_q codes / frame', col:'#e8a44a',
+      desc:'RVQ bottleneck — each latent frame is quantized by a stack of N_q codebooks (Section 3). The chosen integer indices ARE the bitstream AND the tokens the Part 10 language models consume. This is the discrete gate.'},
+    {id:'dec', label:'conv decoder',sub:'↑ upsample ×320', col:'#8b7bf0',
+      desc:'Convolutional decoder — a mirror of the encoder using transposed convolutions that upsample the quantized latents back to the waveform rate, reconstructing the audio.'},
+    {id:'out', label:'audio',       sub:'reconstruction', col:'#5ce89a',
+      desc:'Reconstructed audio — the decoder output. Trained to match the input under STFT + adversarial losses so it sounds real, not just numerically close.'},
+  ];
+  const losses=[
+    {label:'multi-scale STFT', col:'#e8a44a', desc:'Multi-scale STFT loss — L1 distance between magnitude spectrograms of x and x̂ at several window sizes. Captures both fine pitch and coarse spectral envelope.'},
+    {label:'adversarial (D)', col:'#e85a7a', desc:'Adversarial loss — multi-scale & multi-period discriminators (HiFi-GAN style, Part 3) push x̂ onto the real-audio manifold, restoring the crispness a regression loss blurs away.'},
+    {label:'VQ commitment', col:'#5ce89a', desc:'VQ commitment loss — keeps every encoder output married to the codeword it selected, on all N_q stages, so the codebooks stay usable (Section 2).'},
+  ];
+  function layout(){
+    const pad=16, top=40, bh=88, gap=(W-2*pad)/blocks.length;
+    const rects=blocks.map((b,i)=>{ const bw=gap*0.74; const x=pad+i*gap+(gap-bw)/2; return {x,y:top,w:bw,h:bh, ...b}; });
+    // loss chips row
+    const ly=top+bh+70, lgap=(W-2*pad)/losses.length;
+    const lrects=losses.map((b,i)=>{ const bw=lgap*0.82; const x=pad+i*lgap+(lgap-bw)/2; return {x,y:ly,w:bw,h:34, ...b}; });
+    return {rects,lrects,top,bh};
+  }
+  function draw(){
+    ctx.fillStyle='#12141c'; ctx.fillRect(0,0,W,H);
+    const acc=ACC(); const {rects,lrects}=layout();
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    // signal-width glyph: bar heights shrink through encoder, grow through decoder
+    // arrows between blocks
+    ctx.strokeStyle='rgba(160,164,180,0.4)'; ctx.lineWidth=1.4;
+    for(let i=0;i<rects.length-1;i++){ const a=rects[i], b=rects[i+1]; const y=a.y+a.h/2; ctx.beginPath(); ctx.moveTo(a.x+a.w,y); ctx.lineTo(b.x,y); ctx.stroke(); const ang=0; ctx.beginPath(); ctx.moveTo(b.x,y); ctx.lineTo(b.x-7,y-4); ctx.lineTo(b.x-7,y+4); ctx.closePath(); ctx.fillStyle='rgba(160,164,180,0.5)'; ctx.fill(); }
+    // blocks
+    rects.forEach((r,i)=>{
+      const on=(i===hover)||(i===pin);
+      ctx.fillStyle= on? r.col : 'rgba(26,29,42,0.9)';
+      ctx.strokeStyle=r.col; ctx.lineWidth= on?2:1.2;
+      ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(r.x,r.y,r.w,r.h,6); else ctx.rect(r.x,r.y,r.w,r.h); ctx.fill(); ctx.stroke();
+      // mini glyph inside
+      const gx=r.x+r.w/2, gyt=r.y+16;
+      if(r.id==='rvq'){ // token grid
+        const cols=4, rows=3, cw=Math.min(9,(r.w-20)/cols), gw=cols*cw, gh=rows*cw;
+        for(let a=0;a<cols;a++)for(let bb=0;bb<rows;bb++){ ctx.fillStyle= on?'rgba(10,11,15,0.6)':r.col; ctx.globalAlpha= on?0.9:0.55; ctx.fillRect(gx-gw/2+a*cw+1, r.y+22+bb*cw, cw-2, cw-2); }
+        ctx.globalAlpha=1;
+      } else { // waveform/bar glyph scaled by stage
+        const scale= i<2? (1-i*0.35) : (i>2? (0.3+ (i-2)*0.35):0.3);
+        ctx.strokeStyle= on?'rgba(10,11,15,0.7)':r.col; ctx.lineWidth=1; ctx.beginPath();
+        const gw=r.w-20, n=22;
+        for(let k=0;k<n;k++){ const xx=r.x+10+k/(n-1)*gw; const yy=r.y+30 - Math.sin(k*0.9)*10*(0.4+scale); if(k===0)ctx.moveTo(xx,yy);else ctx.lineTo(xx,yy); } ctx.stroke();
+      }
+      ctx.fillStyle= on?'#0a0b0f':'#d4d6e0'; ctx.font="bold 11px 'Lucida Console',monospace";
+      ctx.fillText(r.label, gx, r.y+r.h-24);
+      ctx.fillStyle= on?'rgba(10,11,15,0.75)':'#8a8d9a'; ctx.font="9px 'Lucida Console',monospace";
+      ctx.fillText(r.sub, gx, r.y+r.h-10);
+    });
+    // "trained with" label
+    ctx.fillStyle='#8a8d9a'; ctx.font="10px 'Lucida Console',monospace"; ctx.textAlign='left';
+    ctx.fillText('trained with:', lrects[0].x, lrects[0].y-12);
+    lrects.forEach((r,i)=>{ const on=(hover===100+i)||(pin===100+i);
+      ctx.fillStyle= on? r.col:'rgba(26,29,42,0.9)'; ctx.strokeStyle=r.col; ctx.lineWidth=on?2:1.1;
+      ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(r.x,r.y,r.w,r.h,5); else ctx.rect(r.x,r.y,r.w,r.h); ctx.fill(); ctx.stroke();
+      ctx.fillStyle= on?'#0a0b0f':'#d4d6e0'; ctx.font="10px 'Lucida Console',monospace"; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(r.label, r.x+r.w/2, r.y+r.h/2); ctx.textAlign='left';
+    });
+    ctx.textBaseline='alphabetic';
+  }
+  function hit(mx,my){
+    const {rects,lrects}=layout();
+    for(let i=0;i<rects.length;i++){ const r=rects[i]; if(mx>=r.x&&mx<=r.x+r.w&&my>=r.y&&my<=r.y+r.h) return i; }
+    for(let i=0;i<lrects.length;i++){ const r=lrects[i]; if(mx>=r.x&&mx<=r.x+r.w&&my>=r.y&&my<=r.y+r.h) return 100+i; }
+    return -1;
+  }
+  function setCap(idx){ if(idx<0){ cap.textContent=DEFAULT; } else if(idx>=100){ cap.textContent=losses[idx-100].desc; } else { cap.textContent=blocks[idx].desc; } }
+  c.addEventListener('mousemove',e=>{ const r=c.getBoundingClientRect(); const mx=(e.clientX-r.left), my=(e.clientY-r.top); const h=hit(mx,my); if(h!==hover){ hover=h; draw(); setCap(h<0?pin:h); } });
+  c.addEventListener('mouseleave',()=>{ hover=-1; draw(); setCap(pin); });
+  c.addEventListener('click',e=>{ const r=c.getBoundingClientRect(); const mx=(e.clientX-r.left), my=(e.clientY-r.top); const h=hit(mx,my); pin=(h===pin?-1:h); draw(); setCap(pin<0?hover:pin); });
+  document.getElementById('archTokens').addEventListener('click',()=>{ pin=2; draw(); setCap(2); });
+  document.getElementById('archReset').addEventListener('click',()=>{ pin=-1; hover=-1; draw(); setCap(-1); });
+  window.addEventListener('resize',()=>{ W=fitWidth(c); ctx=setupCanvas(c,W,H); draw(); });
+  draw();
+})();
+
+// ── hero animation: waveform morphing into spectrogram bars ───
+(function hero(){
+  const c=document.getElementById('heroCanvas'); if(!c) return;
+  const W=()=>Math.max(320,document.documentElement.clientWidth);
+  const H=()=>Math.max(400,Math.min(window.innerHeight,900));
+  let ctx=setupCanvas(c,W(),H());
+  const N=200; let ph=0; let last=performance.now();
+  function frame(now){
+    const w=W(),h=H(); if(c.width!==Math.round(w*DPR)||c.height!==Math.round(h*DPR)) ctx=setupCanvas(c,w,h);
+    const dt=Math.min(0.05,(now-last)/1000); last=now; ph+=dt*0.6;
+    ctx.fillStyle='rgba(10,11,15,0.22)'; ctx.fillRect(0,0,w,h);
+    const morph=0.5+0.5*Math.sin(ph*0.5); // 0 = waveform, 1 = bars
+    ctx.strokeStyle='rgba(74,199,232,0.75)'; ctx.lineWidth=1.6;
+    for(let i=0;i<N;i++){
+      const x=i/(N-1)*w;
+      const tt=i*0.12+ph*3;
+      const wav=Math.sin(tt)+0.5*Math.sin(tt*2.01)+0.3*Math.sin(tt*3.03);
+      const env=0.4+0.6*Math.abs(Math.sin(i*0.05+ph));
+      const barTop=h*0.5 - env*h*0.30*(0.5+0.5*Math.sin(i*0.7+ph*2));
+      const wy=h*0.5 - wav*h*0.09;
+      if(morph<0.5){ // waveform line
+        if(i===0){ctx.beginPath(); ctx.moveTo(x,wy);} else ctx.lineTo(x,wy);
+      }
+    }
+    if(morph<0.5) ctx.stroke();
+    if(morph>=0.5){ // spectrogram-ish bars
+      for(let i=0;i<N;i++){ const x=i/(N-1)*w; const env=Math.abs(Math.sin(i*0.09+ph*1.3))*Math.abs(Math.sin(i*0.3+ph)); const hh=env*h*0.34*(morph); ctx.fillStyle=`rgba(${60+env*120|0},${120+env*100|0},${200},${0.15+env*0.5})`; ctx.fillRect(x-1, h*0.5-hh, 3, hh*2); }
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  window.addEventListener('resize',()=>{ ctx=setupCanvas(c,W(),H()); });
+})();
+
+// ── scroll-spy ────────────────────────────────────────────────
+(function toc(){
+  const links=document.querySelectorAll('nav#toc a');
+  const secs=Array.from(links).map(a=>document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  function onScroll(){ const y=window.scrollY+120; let k=0; for(let i=0;i<secs.length;i++){ if(secs[i].offsetTop<=y) k=i; } links.forEach(a=>a.classList.remove('active')); if(links[k]) links[k].classList.add('active'); }
+  window.addEventListener('scroll',onScroll,{passive:true}); onScroll();
+})();
+})();
+</script>
+</body>
+</html>
